@@ -6,16 +6,31 @@ This program detecs 5 objects in a video stream. Than, it shows the detected obj
 @since: 2020-05-10
 
 @TO-DO:
-    - Designing database for the application.
-    - Implementing the database
+    - Update the detection model to the latest version. Or use tensorflow.
+    - Update the database to mongoDB.
+    - Optimization.
+    - Simplifaction.
 """
 
-from turtle import bgcolor
+from email.mime import application
 from   PIL      import Image, ImageTk
 from   tkinter  import ttk
 import tkinter  as tk
 import numpy    as np
+import warnings
+import datetime
+import sqlite3
+import glob
 import cv2
+import os
+
+warnings.filterwarnings("ignore")
+
+try:
+    from ctypes import windll
+    windll.shcore.SetProcessDpiAwareness(1)
+except:
+    print("PASSED")
 
 class ObjectDetection(tk.Tk) :
 
@@ -30,7 +45,8 @@ class ObjectDetection(tk.Tk) :
         self.selectedObjects = []
         self.anyFill = False
         self.isStarted = False
-        
+        self.datas = {}
+
         self.title("Object Detection Implementation - Emir Çetin MEMİŞ")
         self.configure(background="black")
 
@@ -62,19 +78,13 @@ class MenuBar(tk.Frame) :
         self.visualizerObject = visualizerObject
 
         self.configure(background="black")
+        self.configure(highlightcolor="white", highlightthickness=2)
 
         self.firstObjectName    = tk.StringVar(value="")
         self.secondObjectName   = tk.StringVar(value="")
         self.thirdObjectName    = tk.StringVar(value="")
         self.fourthObjectName   = tk.StringVar(value="")
         self.fifthObjectName    = tk.StringVar(value="")
-
-        """self.firstObjectName    = tk.StringVar(value="person")
-        self.secondObjectName   = tk.StringVar(value="cell phone")
-        self.thirdObjectName    = tk.StringVar(value="chair")
-        self.fourthObjectName   = tk.StringVar(value="bottle")
-        self.fifthObjectName    = tk.StringVar(value="dining table")"""
-
 
         """ OBJECT SELECTION """
         longestWorldLength = max(map(len,self.root.allObjectNames))
@@ -184,25 +194,43 @@ class MenuBar(tk.Frame) :
             self.root.selectedObjects.append(combobox.get())    
             
     def saveAndExit(self) :
-        cv2.destroyAllWindows()
+
+        self.saveAndExitButton.config(state="disabled")
+        self.visualizerObject.proccesCapture(True)
 
         if (self.root.anyFill) :
             print("Program have been runnig in test mode. No data will be saved.")
         else :
             print("Program closed successfully. Check the saved data.")
+            
+            self.cleanSpace()
 
-        """
-            DATABASE IMPLEMENTATION HERE...
+            for object in self.root.datas :
 
-            Plan, how to save data: 
-                First, create dictionary stucture into the proccesCapture method.
-                Second, create a boolean data field to store exit time has come or not.
-                Third, check the second operations at every iteration in procces. 
-                Fourth, when the exit time has come, save an data to dictionary, and close the procces window by disabling after method.
-                Fifth, get into exit and save method and procces the data and finish the program.
-        """
+                fileName = str(object) + ".db"
+                filePath = os.path.realpath("Data Export/" + fileName)
+                
+                conn = sqlite3.connect(filePath)
+                cur = conn.cursor()
 
-        exit()
+                cur.execute("DROP TABLE IF EXISTS info")
+                cur.execute("CREATE TABLE info (file_path text, object_coordinates text, object_status text, date text, time text, object_name text)")
+                cur.execute("INSERT INTO info VALUES (?, ?, ?, ?, ?, ?)", (str(filePath), str(self.root.datas[object][1]), str(self.root.datas[object][0]), str(self.root.datas[object][2]), str(self.root.datas[object][3]), str(object),))
+
+                conn.commit()
+
+                cur.close()
+                conn.close()
+
+        self.after(3000, lambda : self.root.destroy())
+
+    def cleanSpace(self) :
+        if not os.path.exists("Data Export"):
+            os.makedirs("Data Export")
+
+        junkFiles = glob.glob("Data Export/*.db")
+        for file in junkFiles: 
+            os.remove(file)    
 
 class Visualizer(tk.Frame) :
 
@@ -215,6 +243,7 @@ class Visualizer(tk.Frame) :
         self.root = root
 
         self.configure(background="black")
+        self.configure(highlightcolor="white", highlightthickness=2)
 
         self._imageWidth = 320
         self._imageHeight = 320
@@ -225,12 +254,13 @@ class Visualizer(tk.Frame) :
 
         self.loadCapModel()
 
-        self.backgroundImage = ImageTk.PhotoImage(Image.open("Assets/background.jpg").resize((self._imageWidth, self._imageHeight), Image.ANTIALIAS))
-
-        self.originalImageLabel = ttk.Label(self, image=self.backgroundImage, background="black")
+        self.backgroundImage  = ImageTk.PhotoImage(Image.open("Utils/background.jpg").resize((self._imageWidth, self._imageHeight), Image.ANTIALIAS))
+        self.backgroundImage2 = ImageTk.PhotoImage(Image.open("Utils/background2.jpg").resize((self._imageWidth, self._imageHeight), Image.ANTIALIAS))
+        
+        self.originalImageLabel = ttk.Label(self, image=self.backgroundImage, background="black", border=1, borderwidth=1, relief="solid")
         self.originalImageLabel.grid(row=0,column=0)
 
-        self.capturedImageLabel = ttk.Label(self, image=self.backgroundImage, background="black")
+        self.capturedImageLabel = ttk.Label(self, image=self.backgroundImage, background="black", border=1, borderwidth=1, relief="solid")
         self.capturedImageLabel.grid(row=0,column=1)
 
         for curWidget in self.winfo_children() :
@@ -244,9 +274,12 @@ class Visualizer(tk.Frame) :
         self.capModel.setInputMean((127.5, 127.5, 127.5))
         self.capModel.setInputSwapRB(True)
 
-    def proccesCapture(self) :
+    def proccesCapture(self, saveFlag = False) :
 
-        self.capturedImage = cv2.cvtColor(self.captureDevice.read()[1],cv2.COLOR_BGR2RGB)
+        try :
+            self.capturedImage = cv2.cvtColor(self.captureDevice.read()[1],cv2.COLOR_BGR2RGB)
+        except :
+            return
 
         self.originalImage = self.capturedImage.copy()
 
@@ -271,15 +304,18 @@ class Visualizer(tk.Frame) :
 
                 if currentObjectName in self.root.selectedObjects :
 
-                    if self.root.selectedObjects.index(currentObjectName) < 3 :
-                        penColor = (0,255,0)
-                    else :
-                        penColor = (255,0,0)
+                    objectName = currentObjectName
+                    objectStats = "OK" if self.root.selectedObjects.index(currentObjectName) < 3 else "NOT OK"
+                    objectCoordinates = (x1,y1,x2,y2)
+                    date, time = datetime.datetime.now().strftime("%d-%m-%Y %H:%M:%S").split(" ")
+
+                    self.root.datas[objectName] = [objectStats, objectCoordinates, date, time]
+
+                    penColor = {"OK":(0,255,0), "NOT OK":(255,0,0)}[objectStats]
 
                     cv2.rectangle(self.capturedImage, (x1,y1),(x1+x2,y2+y1), color=penColor, thickness=2)
                     cv2.putText(self.capturedImage,currentObjectName,(bboxes[i][0],bboxes[i][1]),cv2.FONT_HERSHEY_SIMPLEX,1,penColor,2)
             else :
-                print("any fill")
                 cv2.rectangle(self.capturedImage, (x1,y1),(x1+x2,y2+y1), color=penColor, thickness=2)
                 cv2.putText(self.capturedImage,currentObjectName,(bboxes[i][0],bboxes[i][1]),cv2.FONT_HERSHEY_SIMPLEX,1,penColor,2)
 
@@ -291,7 +327,16 @@ class Visualizer(tk.Frame) :
         self.originalImageLabel.config(image=self.originalImage)
         self.originalImageLabel.grid(row=0,column=0)
 
-        self.after(10, self.proccesCapture)
+        if not saveFlag :
+            self.after(10, self.proccesCapture)
+        else :
+            self.captureDevice.release()
 
-app = ObjectDetection()
-app.mainloop()
+            self.capturedImageLabel.config(image=self.backgroundImage2)
+            self.capturedImageLabel.grid(row=0,column=1)
+            self.originalImageLabel.config(image=self.backgroundImage2)
+            self.originalImageLabel.grid(row=0,column=0)
+
+if __name__ == "__main__" :
+    application = ObjectDetection()
+    application.mainloop()
