@@ -20,7 +20,7 @@ capModel.setInputSwapRB(True)
 
 while True:
     
-    failrue, capturedImage = captureDevice.read()
+    capturedImage = opencv.cvtColor(captureDevice.read()[1],opencv.COLOR_BGR2RGB)
 
     originalImage = capturedImage.copy()
 

@@ -12,31 +12,24 @@ This program detects and reports objects from a picture.
     - Creating a picture creator for the application.
 """
 
-from distutils.log import info
 import cv2      as opencv
-from cv2 import threshold
 import numpy    as np
 import tkinter  as tk
-from   tkinter  import ANCHOR, ttk
+from   tkinter  import ttk
+from   PIL      import Image, ImageTk
+
 
 class ObjectDetection(tk.Tk) :
 
-    _objectNameFilePath      = "Assets/Object Class Names.txt"
-    _configurationsFilePath  = "Assets/Configurations.pbtxt"
-    _weightsFilePath         = "Assets/Weights.pb"
+    _objectNameFilePath = "Assets/Object Class Names.txt"
 
     def __init__(self, *args, **kwargs) :
         super().__init__(*args, **kwargs)
 
         self.objectTreshold = tk.DoubleVar(value=0.45)
         self.nmsThreshold   = tk.DoubleVar(value=0.2)
-        self.captureDevice  = opencv.VideoCapture(0)
+        
         self.allObjectNames = [cName[0:-1] for cName in open(self._objectNameFilePath,'r')]
-
-        self.originalImage = None
-        self.capturedImage = None
-
-        self.loadCapModel()
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
@@ -46,57 +39,33 @@ class ObjectDetection(tk.Tk) :
         self.parseContainer = tk.Frame(self)
         self.parseContainer.grid(row=0,column=0) 
 
-        self.menubar = MenuBar(self, self.parseContainer)
-        self.menubar.grid(row=0,column=0)
-
         self.output = Visualizer(self, self.parseContainer)
+        self.menubar = MenuBar(self, self.parseContainer, self.output)
+        self.menubar.grid(row=0,column=0)
         self.output.grid(row=2,column=0)
 
         for children in self.parseContainer.winfo_children() :
             children.grid_configure(padx=5, pady=5)
 
-
-    def loadCapModel(self) :
-
-        self.capModel = opencv.dnn_DetectionModel(self._weightsFilePath,self._configurationsFilePath)
-        self.capModel.setInputSize(320,320)
-        self.capModel.setInputScale(1.0/ 127.5)
-        self.capModel.setInputMean((127.5, 127.5, 127.5))
-        self.capModel.setInputSwapRB(True)
-
-    def proccesCapture(self) :
-
-        failrue, self.capturedImage = self.captureDevice.read()
-
-        self.originalImage = self.capturedImage.copy()
-
-        objectIDs, confidences, bboxes = self.capModel.detect(self.capturedImage,confThreshold=self.objectTreshold.get())
-
-        bboxes = list(bboxes)
-        confidences = list(np.array(confidences).reshape(1,-1)[0])
-        confidences = list(map(float,confidences))
-        
-        stats = opencv.dnn.NMSBoxes(bboxes,confidences,self.objectTreshold.get(),self.nmsThreshold.get())
-
-        for i in stats:
-            i = int(i)
-            box = bboxes[i]
-            x1,y1,x2,y2 = box[0],box[1],box[2],box[3]
-            opencv.rectangle(self.capturedImage, (x1,y1),(x1+x2,y2+y1), color=(0, 255, 0), thickness=2)
-            opencv.putText(self.capturedImage,self.allObjectNames[objectIDs[i]-1].upper(),(box[0]+10,box[1]+30), opencv.FONT_HERSHEY_COMPLEX,1,(0,255,0),2)
-
 class MenuBar(ttk.Frame) :
 
-    def __init__(self, root, parent, *args, **kwargs) :
+    def __init__(self, root, parent, visualizerObject, *args, **kwargs) :
         super().__init__(parent, *args, **kwargs)
 
         self.root = root
+        self.visualizerObject = visualizerObject
 
-        self.firstObjectName    = tk.StringVar(value="")
+        """self.firstObjectName    = tk.StringVar(value="")
         self.secondObjectName   = tk.StringVar(value="")
         self.thirdObjectName    = tk.StringVar(value="")
         self.fourthObjectName   = tk.StringVar(value="")
-        self.fifthObjectName    = tk.StringVar(value="")
+        self.fifthObjectName    = tk.StringVar(value="")"""
+
+        self.firstObjectName    = tk.StringVar(value="person")
+        self.secondObjectName   = tk.StringVar(value="person")
+        self.thirdObjectName    = tk.StringVar(value="person")
+        self.fourthObjectName   = tk.StringVar(value="person")
+        self.fifthObjectName    = tk.StringVar(value="person")
 
         """ OBJECT SELECTION """
         longestWorldLength = max(map(len,self.root.allObjectNames))
@@ -173,13 +142,22 @@ class MenuBar(ttk.Frame) :
 
     def start(self) :
         
-        for element in self.win
+        for element in self.winfo_children() :
+            element.config(state="disabled")
+
+        self.saveAndExitButton.config(state="normal")
+
+        self.visualizerObject.proccesCapture()
 
     def saveAndExit(self) :
-        pass
-
+        
+        print("exiting...")
+        exit()
 
 class Visualizer(ttk.Frame) :
+
+    _configurationsFilePath  = "Assets/Configurations.pbtxt"
+    _weightsFilePath         = "Assets/Weights.pb"
 
     def __init__(self, root, parent, *args, **kwargs) :
         super().__init__(parent, *args, **kwargs)
@@ -187,10 +165,64 @@ class Visualizer(ttk.Frame) :
         _imageWidth = 320
         _imageHeight = 320
 
+        self.captureDevice  = opencv.VideoCapture(0)
+        self.originalImage = None
+        self.capturedImage = None
+
         self.root = root
 
+        self.loadCapModel()
 
+        self.backgroundImage = ImageTk.PhotoImage(Image.open("Assets/background.jpg").resize((_imageWidth, _imageHeight), Image.ANTIALIAS))
 
+        self.originalImageLabel = ttk.Label(self, image=self.backgroundImage, background="black")
+        self.originalImageLabel.grid(row=0,column=0)
+
+        self.capturedImageLabel = ttk.Label(self, image=self.backgroundImage, background="black")
+        self.capturedImageLabel.grid(row=0,column=1)
+
+        for curWidget in self.winfo_children() :
+            curWidget.grid_configure(padx=10, pady=5)
+
+    def loadCapModel(self) :
+
+        self.capModel = opencv.dnn_DetectionModel(self._weightsFilePath,self._configurationsFilePath)
+        self.capModel.setInputSize(320,320)
+        self.capModel.setInputScale(1.0/ 127.5)
+        self.capModel.setInputMean((127.5, 127.5, 127.5))
+        self.capModel.setInputSwapRB(True)
+
+    def proccesCapture(self) :
+
+        self.capturedImage = opencv.cvtColor(self.captureDevice.read()[1],opencv.COLOR_BGR2RGB)
+
+        self.originalImage = self.capturedImage.copy()
+
+        objectIDs, confidences, bboxes = self.capModel.detect(self.capturedImage,confThreshold=self.root.objectTreshold.get())
+
+        bboxes = list(bboxes)
+        confidences = list(np.array(confidences).reshape(1,-1)[0])
+        confidences = list(map(float,confidences))
+        
+        stats = opencv.dnn.NMSBoxes(bboxes,confidences,self.root.objectTreshold.get(),self.root.nmsThreshold.get())
+
+        for i in stats:
+            i = int(i)
+            box = bboxes[i]
+            x1,y1,x2,y2 = box[0],box[1],box[2],box[3]
+            opencv.rectangle(self.capturedImage, (x1,y1),(x1+x2,y2+y1), color=(0, 255, 0), thickness=2)
+            opencv.putText(self.capturedImage,self.root.allObjectNames[objectIDs[i]-1].upper(),(box[0]+10,box[1]+30), opencv.FONT_HERSHEY_COMPLEX,1,(0,255,0),2)
+
+        #resize the capture to 320 320
+        self.capturedImage = ImageTk.PhotoImage(Image.fromarray(self.capturedImage).resize((320,320), Image.ANTIALIAS))
+        self.capturedImageLabel.config(image=self.capturedImage)
+        self.capturedImageLabel.grid(row=0,column=1)
+
+        self.originalImage = ImageTk.PhotoImage(Image.fromarray(self.originalImage).resize((320,320), Image.ANTIALIAS))
+        self.originalImageLabel.config(image=self.originalImage)
+        self.originalImageLabel.grid(row=0,column=0)
+
+        self.after(10, self.proccesCapture)
 
 app = ObjectDetection()
 app.mainloop()
