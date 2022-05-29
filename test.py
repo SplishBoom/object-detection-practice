@@ -44,6 +44,4 @@ while True:
     opencv.imshow("Output",capturedImage)
     opencv.waitKey(1)
 
-
-    
 opencv.destroyAllWindows()

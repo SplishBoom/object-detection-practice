@@ -184,14 +184,25 @@ class MenuBar(tk.Frame) :
             self.root.selectedObjects.append(combobox.get())    
             
     def saveAndExit(self) :
-        
+        cv2.destroyAllWindows()
+
         if (self.root.anyFill) :
             print("Program have been runnig in test mode. No data will be saved.")
         else :
             print("Program closed successfully. Check the saved data.")
 
-        exit()
+        """
+            DATABASE IMPLEMENTATION HERE...
 
+            Plan, how to save data: 
+                First, create dictionary stucture into the proccesCapture method.
+                Second, create a boolean data field to store exit time has come or not.
+                Third, check the second operations at every iteration in procces. 
+                Fourth, when the exit time has come, save an data to dictionary, and close the procces window by disabling after method.
+                Fifth, get into exit and save method and procces the data and finish the program.
+        """
+
+        exit()
 
 class Visualizer(tk.Frame) :
 
