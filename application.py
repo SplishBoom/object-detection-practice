@@ -1,23 +1,21 @@
 """
-This program detects and reports objects from a picture.
+This program detecs 5 objects in a video stream. Than, it shows the detected objects in a window. And it stores the detected objects in a file with database and files.
 
 @author: Emir Çetin MEMİŞ
 @contact: memise@mef.edu.tr
 @since: 2020-05-10
 
 @TO-DO:
-    - Implementation of the object detection algorithm.
-    - Creating GUI for the application.
     - Designing database for the application.
-    - Creating a picture creator for the application.
+    - Implementing the database
 """
 
-import cv2      as opencv
-import numpy    as np
-import tkinter  as tk
-from   tkinter  import ttk
+from turtle import bgcolor
 from   PIL      import Image, ImageTk
-
+from   tkinter  import ttk
+import tkinter  as tk
+import numpy    as np
+import cv2
 
 class ObjectDetection(tk.Tk) :
 
@@ -28,26 +26,34 @@ class ObjectDetection(tk.Tk) :
 
         self.objectTreshold = tk.DoubleVar(value=0.45)
         self.nmsThreshold   = tk.DoubleVar(value=0.2)
-        
         self.allObjectNames = [cName[0:-1] for cName in open(self._objectNameFilePath,'r')]
+        self.selectedObjects = []
+        self.anyFill = False
+        self.isStarted = False
+        
+        self.title("Object Detection Implementation - Emir Çetin MEMİŞ")
+        self.configure(background="black")
+
+        self.style = ttk.Style()
+        self.style.theme_use("clam")
+        self.style.configure("TFrame", background="gray")
 
         self.columnconfigure(0, weight=1)
         self.rowconfigure(0, weight=1)
 
-        self.configure(background="black")
-
-        self.parseContainer = tk.Frame(self)
-        self.parseContainer.grid(row=0,column=0) 
+        self.parseContainer = ttk.Frame(self, padding=(10,10,10,10))
+        self.parseContainer.grid(row=0,column=0, padx=10, pady=10) 
 
         self.output = Visualizer(self, self.parseContainer)
         self.menubar = MenuBar(self, self.parseContainer, self.output)
+
         self.menubar.grid(row=0,column=0)
         self.output.grid(row=2,column=0)
 
-        for children in self.parseContainer.winfo_children() :
-            children.grid_configure(padx=5, pady=5)
+        for frame in self.parseContainer.winfo_children() :
+            frame.grid_configure(padx=5, pady=5)
 
-class MenuBar(ttk.Frame) :
+class MenuBar(tk.Frame) :
 
     def __init__(self, root, parent, visualizerObject, *args, **kwargs) :
         super().__init__(parent, *args, **kwargs)
@@ -55,17 +61,20 @@ class MenuBar(ttk.Frame) :
         self.root = root
         self.visualizerObject = visualizerObject
 
-        """self.firstObjectName    = tk.StringVar(value="")
+        self.configure(background="black")
+
+        self.firstObjectName    = tk.StringVar(value="")
         self.secondObjectName   = tk.StringVar(value="")
         self.thirdObjectName    = tk.StringVar(value="")
         self.fourthObjectName   = tk.StringVar(value="")
-        self.fifthObjectName    = tk.StringVar(value="")"""
+        self.fifthObjectName    = tk.StringVar(value="")
 
-        self.firstObjectName    = tk.StringVar(value="person")
-        self.secondObjectName   = tk.StringVar(value="person")
-        self.thirdObjectName    = tk.StringVar(value="person")
-        self.fourthObjectName   = tk.StringVar(value="person")
-        self.fifthObjectName    = tk.StringVar(value="person")
+        """self.firstObjectName    = tk.StringVar(value="person")
+        self.secondObjectName   = tk.StringVar(value="cell phone")
+        self.thirdObjectName    = tk.StringVar(value="chair")
+        self.fourthObjectName   = tk.StringVar(value="bottle")
+        self.fifthObjectName    = tk.StringVar(value="dining table")"""
+
 
         """ OBJECT SELECTION """
         longestWorldLength = max(map(len,self.root.allObjectNames))
@@ -85,7 +94,10 @@ class MenuBar(ttk.Frame) :
         fifthObjectNameLabel = ttk.Label(self, text="5. Not OK Object:", foreground="red", background="black")
         fifthObjectNameCombobox = ttk.Combobox(self, textvariable=self.fifthObjectName, values=self.root.allObjectNames, cursor="hand2", justify=tk.CENTER, width=longestWorldLength)
 
-        comboboxses = [firsObjectNameCombobox, secondObjectNameCombobox, thirdObjectNameCombobox, fourthObjectNameCombobox, fifthObjectNameCombobox]
+        self.comboboxses = [firsObjectNameCombobox, secondObjectNameCombobox, thirdObjectNameCombobox, fourthObjectNameCombobox, fifthObjectNameCombobox]
+
+        self.anyObjectButton = ttk.Button(self, text="Any Object", command=self.handleAny, cursor="hand2")
+        self.anyObjectButton.grid(row=2, column=2, columnspan=2)
 
         firstObjectNameLabel.grid(row=0,column=0)
         firsObjectNameCombobox.grid(row=0,column=1)
@@ -100,11 +112,11 @@ class MenuBar(ttk.Frame) :
 
         """ ALGORTIHM SETTINGS """
         objectTresholdLabel = ttk.Label(self, text="Object Treshold:")
-        self.objectTresholdScale = ttk.Scale(self, from_=0.0, to=1.0, orient=tk.HORIZONTAL, variable=self.root.objectTreshold, length=longestWorldLength*7, command=self.handleScale)
+        self.objectTresholdScale = ttk.Scale(self, from_=0.0, to=1.0, orient=tk.HORIZONTAL, cursor="hand2", variable=self.root.objectTreshold, length=longestWorldLength*6, command=self.handleScale)
         objectTresholdInfo = ttk.Label(self, textvariable=self.root.objectTreshold) 
 
         nmsThresholdLabel = ttk.Label(self, text="NMS Treshold:")
-        self.nmsThresholdScale = ttk.Scale(self, from_=0.0, to=1.0, orient=tk.HORIZONTAL, variable=self.root.nmsThreshold, length=longestWorldLength*7, command=self.handleScale)
+        self.nmsThresholdScale = ttk.Scale(self, from_=0.0, to=1.0, orient=tk.HORIZONTAL, cursor="hand2", variable=self.root.nmsThreshold, length=longestWorldLength*6, command=self.handleScale)
         nmsThresholdInfo = ttk.Label(self, textvariable=self.root.nmsThreshold)
 
         objectTresholdLabel.grid(row=0,column=4)
@@ -123,10 +135,24 @@ class MenuBar(ttk.Frame) :
         self.saveAndExitButton.grid(row=3,column=3, sticky="WE", columnspan=3)
 
         for curWidget in self.winfo_children() :
-            curWidget.grid_configure(padx=5, pady=5)
+            curWidget.grid_configure(padx=10, pady=5)
         
-        for combobox in comboboxses :
+        for combobox in self.comboboxses :
             combobox.bind("<<ComboboxSelected>>", self.handleCombo)
+
+    def handleAny(self) :
+        
+        self.root.anyFill = True
+
+        self.anyObjectButton.config(state="disabled")
+
+        self.firstObjectName.set("ANY")
+        self.secondObjectName.set("ANY")
+        self.thirdObjectName.set("ANY")
+        self.fourthObjectName.set("ANY")
+        self.fifthObjectName.set("ANY")
+
+        self.startButton.config(state="normal")
 
     def handleScale(self, *event) :
         self.root.objectTreshold.set(float(str(self.objectTresholdScale.get())[0:4]))
@@ -137,24 +163,37 @@ class MenuBar(ttk.Frame) :
         self.updateVariables()
 
     def updateVariables(self, *event) :
-        if not (self.fifthObjectName.get() == "" or self.fourthObjectName.get() == "" or self.thirdObjectName.get() == "" or self.secondObjectName.get() == "" or self.firstObjectName.get() == "") :
+        if (not (self.fifthObjectName.get() == "" or self.fourthObjectName.get() == "" or self.thirdObjectName.get() == "" or self.secondObjectName.get() == "" or self.firstObjectName.get() == "")) and (not self.root.anyFill) and (not self.root.isStarted) :
             self.startButton.config(state="normal")
 
     def start(self) :
         
-        for element in self.winfo_children() :
+        for element in self.comboboxses :
             element.config(state="disabled")
 
+        self.startButton.config(state="disabled")
+        self.root.isStarted = True
+        self.anyObjectButton.config(state="disabled")
         self.saveAndExitButton.config(state="normal")
 
         self.visualizerObject.proccesCapture()
 
+        self.root.selectedObjects = []
+
+        for combobox in self.comboboxses :
+            self.root.selectedObjects.append(combobox.get())    
+            
     def saveAndExit(self) :
         
-        print("exiting...")
+        if (self.root.anyFill) :
+            print("Program have been runnig in test mode. No data will be saved.")
+        else :
+            print("Program closed successfully. Check the saved data.")
+
         exit()
 
-class Visualizer(ttk.Frame) :
+
+class Visualizer(tk.Frame) :
 
     _configurationsFilePath  = "Assets/Configurations.pbtxt"
     _weightsFilePath         = "Assets/Weights.pb"
@@ -162,18 +201,20 @@ class Visualizer(ttk.Frame) :
     def __init__(self, root, parent, *args, **kwargs) :
         super().__init__(parent, *args, **kwargs)
 
-        _imageWidth = 320
-        _imageHeight = 320
+        self.root = root
 
-        self.captureDevice  = opencv.VideoCapture(0)
+        self.configure(background="black")
+
+        self._imageWidth = 320
+        self._imageHeight = 320
+
+        self.captureDevice  = cv2.VideoCapture(0)
         self.originalImage = None
         self.capturedImage = None
 
-        self.root = root
-
         self.loadCapModel()
 
-        self.backgroundImage = ImageTk.PhotoImage(Image.open("Assets/background.jpg").resize((_imageWidth, _imageHeight), Image.ANTIALIAS))
+        self.backgroundImage = ImageTk.PhotoImage(Image.open("Assets/background.jpg").resize((self._imageWidth, self._imageHeight), Image.ANTIALIAS))
 
         self.originalImageLabel = ttk.Label(self, image=self.backgroundImage, background="black")
         self.originalImageLabel.grid(row=0,column=0)
@@ -182,11 +223,11 @@ class Visualizer(ttk.Frame) :
         self.capturedImageLabel.grid(row=0,column=1)
 
         for curWidget in self.winfo_children() :
-            curWidget.grid_configure(padx=10, pady=5)
+            curWidget.grid_configure(padx=7, pady=5)
 
     def loadCapModel(self) :
 
-        self.capModel = opencv.dnn_DetectionModel(self._weightsFilePath,self._configurationsFilePath)
+        self.capModel = cv2.dnn_DetectionModel(self._weightsFilePath,self._configurationsFilePath)
         self.capModel.setInputSize(320,320)
         self.capModel.setInputScale(1.0/ 127.5)
         self.capModel.setInputMean((127.5, 127.5, 127.5))
@@ -194,7 +235,7 @@ class Visualizer(ttk.Frame) :
 
     def proccesCapture(self) :
 
-        self.capturedImage = opencv.cvtColor(self.captureDevice.read()[1],opencv.COLOR_BGR2RGB)
+        self.capturedImage = cv2.cvtColor(self.captureDevice.read()[1],cv2.COLOR_BGR2RGB)
 
         self.originalImage = self.capturedImage.copy()
 
@@ -204,21 +245,38 @@ class Visualizer(ttk.Frame) :
         confidences = list(np.array(confidences).reshape(1,-1)[0])
         confidences = list(map(float,confidences))
         
-        stats = opencv.dnn.NMSBoxes(bboxes,confidences,self.root.objectTreshold.get(),self.root.nmsThreshold.get())
+        stats = cv2.dnn.NMSBoxes(bboxes,confidences,self.root.objectTreshold.get(),self.root.nmsThreshold.get())
 
         for i in stats:
             i = int(i)
+
+            currentObjectName = self.root.allObjectNames[objectIDs[i]-1].lower()
+            
             box = bboxes[i]
             x1,y1,x2,y2 = box[0],box[1],box[2],box[3]
-            opencv.rectangle(self.capturedImage, (x1,y1),(x1+x2,y2+y1), color=(0, 255, 0), thickness=2)
-            opencv.putText(self.capturedImage,self.root.allObjectNames[objectIDs[i]-1].upper(),(box[0]+10,box[1]+30), opencv.FONT_HERSHEY_COMPLEX,1,(0,255,0),2)
+            penColor = (0,0,0)
 
-        #resize the capture to 320 320
-        self.capturedImage = ImageTk.PhotoImage(Image.fromarray(self.capturedImage).resize((320,320), Image.ANTIALIAS))
+            if not self.root.anyFill :
+
+                if currentObjectName in self.root.selectedObjects :
+
+                    if self.root.selectedObjects.index(currentObjectName) < 3 :
+                        penColor = (0,255,0)
+                    else :
+                        penColor = (255,0,0)
+
+                    cv2.rectangle(self.capturedImage, (x1,y1),(x1+x2,y2+y1), color=penColor, thickness=2)
+                    cv2.putText(self.capturedImage,currentObjectName,(bboxes[i][0],bboxes[i][1]),cv2.FONT_HERSHEY_SIMPLEX,1,penColor,2)
+            else :
+                print("any fill")
+                cv2.rectangle(self.capturedImage, (x1,y1),(x1+x2,y2+y1), color=penColor, thickness=2)
+                cv2.putText(self.capturedImage,currentObjectName,(bboxes[i][0],bboxes[i][1]),cv2.FONT_HERSHEY_SIMPLEX,1,penColor,2)
+
+        self.capturedImage = ImageTk.PhotoImage(Image.fromarray(self.capturedImage).resize((self._imageWidth, self._imageHeight), Image.ANTIALIAS))
         self.capturedImageLabel.config(image=self.capturedImage)
         self.capturedImageLabel.grid(row=0,column=1)
 
-        self.originalImage = ImageTk.PhotoImage(Image.fromarray(self.originalImage).resize((320,320), Image.ANTIALIAS))
+        self.originalImage = ImageTk.PhotoImage(Image.fromarray(self.originalImage).resize((self._imageWidth, self._imageHeight), Image.ANTIALIAS))
         self.originalImageLabel.config(image=self.originalImage)
         self.originalImageLabel.grid(row=0,column=0)
 
