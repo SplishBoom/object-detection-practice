@@ -1,5 +1,7 @@
-certifi==2022.5.18.1
-numpy==1.22.4
-opencv-python==4.5.5.64
-Pillow==9.1.1
-wincertstore==0.2
+conda activate base
+
+pip install certifi==2022.5.18.1
+pip install numpy==1.22.4
+pip install opencv-python==4.5.5.64
+pip install Pillow==9.1.1
+pip install wincertstore==0.2
